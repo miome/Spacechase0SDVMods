@@ -2,10 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Reflection;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using StardewModdingAPI;
 using StardewValley;
+using StardewValley.Enchantments;
+using StardewValley.GameData.Objects;
 using StardewValley.Locations;
 using StardewValley.Tools;
 using SObject = StardewValley.Object;
@@ -40,7 +43,7 @@ namespace MoreRings.Framework
 
                 if (!(Game1.currentLocation.Name.StartsWith("UndergroundMine")))
                 {
-                    if (obj.ItemID is "343" or "450")
+                    if (obj.ItemId is "343" or "450")
                     {
 
                         Random rand = new Random((int)Game1.stats.DaysPlayed + (int)Game1.uniqueIDForThisGame / 2 + (int)pos.X * 2000 + (int)pos.Y);
@@ -58,10 +61,10 @@ namespace MoreRings.Framework
                 }
                 else if (obj.Name.Contains("Stone"))
                 {
-                    doDraw = TrueSight.GetMineStoneDrop(obj.ItemID, (int)pos.X, (int)pos.Y, Game1.player, (Game1.currentLocation as MineShaft));
+                    doDraw = TrueSight.GetMineStoneDrop(obj.ItemId, (int)pos.X, (int)pos.Y, Game1.player, (Game1.currentLocation as MineShaft));
                 }
 
-                if (obj.ItemID == "590")
+                if (obj.ItemId == "590")
                     doDraw = TrueSight.GetArtifactSpotDrop((int)pos.X, (int)pos.Y, Game1.player);
 
                 if (doDraw != "-1")
@@ -75,7 +78,7 @@ namespace MoreRings.Framework
                     {
                         if (!TrueSight.DrawObjects.TryGetValue(doDraw, out SObject drawObj))
                         {
-                            drawObj = new SObject(new Vector2(0, 0), doDraw, 1);
+                            drawObj = new SObject(new Vector2(0, 0), doDraw, true);
                             TrueSight.DrawObjects.Add(doDraw, drawObj);
                         }
 
@@ -90,11 +93,11 @@ namespace MoreRings.Framework
                 {
                     for (int iy = 0; iy < Game1.currentLocation.Map.Layers[0].LayerWidth; ++iy)
                     {
-                        if (il.IsBuriedNutLocation(new Point(ix, iy)) && !Game1.netWorldState.Value.FoundBuriedNuts.ContainsKey($"{il.NameOrUniqueName}_{ix}_{iy}"))
+                        if (il.IsBuriedNutLocation(new Point(ix, iy)) && !Game1.netWorldState.Value.FoundBuriedNuts.Contains($"{il.NameOrUniqueName}_{ix}_{iy}"))
                         {
                             if (!TrueSight.DrawObjects.TryGetValue("73", out SObject drawObj))
                             {
-                                drawObj = new SObject(new Vector2(0, 0), "73", 1);
+                                drawObj = new SObject(new Vector2(0, 0), "73", true);
                                 TrueSight.DrawObjects.Add("73", drawObj);
                             }
 
@@ -174,7 +177,7 @@ namespace MoreRings.Framework
                         return "382";
                     }
                     else
-                        return mine.getOreIndexForLevel(mineLevel, r);
+                        return mine.getOreIdForLevel(mineLevel, r);
                 }
                 else
                 {
@@ -347,7 +350,7 @@ namespace MoreRings.Framework
             {
                 var unseenSecretNote = mine.tryToCreateUnseenSecretNote(player);
                 if (unseenSecretNote != null)
-                    ret = unseenSecretNote.ItemID;
+                    ret = unseenSecretNote.ItemId;
             }
             return ret;
         }
@@ -361,21 +364,15 @@ namespace MoreRings.Framework
             Random random = new Random(x * 2000 + y + (int)Game1.uniqueIDForThisGame / 2 + (int)Game1.stats.DaysPlayed);
             bool archeologyEnchant = player?.CurrentTool is Hoe && player.CurrentTool.hasEnchantmentOfType<ArchaeologistEnchantment>();
             string objectIndex = "-1";
-            foreach (KeyValuePair<string, string> keyValuePair in Game1.objectInformation)
+            foreach (KeyValuePair<string, ObjectData> obj in Game1.objectData)
             {
-                string[] strArray1 = keyValuePair.Value.Split('/');
-                if (strArray1[3].Contains("Arch"))
+                ObjectData objData = obj.Value;
+                if (objData.Type == "Arch")
                 {
-                    string[] strArray2 = strArray1[6].Split(' ');
-                    int index = 0;
-                    while (index < strArray2.Length)
+                    if(objData.ArtifactSpotChances.ContainsKey(Game1.currentLocation.Name) && random.NextDouble() < (archeologyEnchant ? 2 : 1) * Convert.ToDouble(objData.ArtifactSpotChances[Game1.currentLocation.Name], CultureInfo.InvariantCulture))
                     {
-                        if (strArray2[index].Equals(Game1.currentLocation.Name) && random.NextDouble() < (archeologyEnchant ? 2 : 1) * Convert.ToDouble(strArray2[index + 1], CultureInfo.InvariantCulture))
-                        {
-                            objectIndex = keyValuePair.Key;
-                            break;
-                        }
-                        index += 2;
+                        objectIndex = obj.Key;
+                        break;
                     }
                 }
                 if (objectIndex != "-1")
@@ -420,7 +417,7 @@ namespace MoreRings.Framework
                 //*/
 
                 Dictionary<string, string> dictionary = Game1.content.Load<Dictionary<string, string>>("Data\\Locations");
-                if (!dictionary.TryGetValue(Game1.currentLocation.name, out string rawLocationData))
+                if (!dictionary.TryGetValue(Game1.currentLocation.Name, out string rawLocationData))
                     return "-1";
                 string[] strArray = rawLocationData.Split('/')[8].Split(' ');
                 if (strArray.Length == 0 || strArray[0].Equals("-1"))
@@ -431,13 +428,11 @@ namespace MoreRings.Framework
                     if (random.NextDouble() <= Convert.ToDouble(strArray[index1 + 1]))
                     {
                         string index2 = /*Convert.ToInt32*/(strArray[index1]);
-                        if (Game1.objectInformation.TryGetValue(index2, out string objData))
+                        if (Game1.objectData.TryGetValue(index2, out ObjectData objData))
                         {
-                            if (objData.Split('/')[3].Contains("Arch") || index2 == "102")
+                            if (objData.SpriteIndex == 102 && Game1.netWorldState.Value.LostBooksFound >= 2)
                             {
-                                if (index2 == "102" && Game1.netWorldState.Value.LostBooksFound.Value >= 21)
-                                    index2 = "770";
-                                return index2;
+                                return "770";
                             }
                         }
                         if (index2 == "330" && Game1.currentLocation.HasUnlockedAreaSecretNotes(player) && random.NextDouble() < 0.11)
